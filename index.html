@@ -103,7 +103,7 @@
 <script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
 <script>
   // Thay thế bằng link Web App của bạn (kết thúc bằng /exec)
-  const WEB_APP_URL = "https://script.google.com/macros/s/AKfycby5bJgKiSepOdKArjb3uY8FFhGzILXJ1P0i959lLa9g-Q9-KTZm9EUJYNRNIuHKy99dqA/exec";
+  const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyWQ-wII0vOUZE2GrPc7SQJ3mYOeypgIovyrQ7G7hUddLtdhC2TJTRmtP9s8Ps9nW1W0Q/exec";
 
   let selectedAsset = null;
   let searchTimeout = null;
@@ -228,6 +228,7 @@
     document.getElementById("imgPreview").src = "";
   }
 
+  // Gửi cập nhật thông qua JSONP (GET request động) để truyền cả chuỗi ảnh lớn mà không bị nghẽn CORS
   function confirmInventory() {
     if (!selectedAsset) {
       swal("Chú ý", "Vui lòng chọn tài sản cần kiểm kê", "warning");
@@ -246,37 +247,43 @@
       newPosition = posInput.value.trim();
     }
 
-    const payload = {
+    showLoading();
+
+    const oldSubmitScript = document.getElementById("submitScript");
+    if (oldSubmitScript) oldSubmitScript.remove();
+
+    const script = document.createElement("script");
+    script.id = "submitScript";
+    
+    const params = new URLSearchParams({
       action: "updateInventory",
       assetCode: selectedAsset.assetCode,
-      inventoryQty: Number(inventoryQty),
+      inventoryQty: inventoryQty,
       position: newPosition,
       imageBase64: base64Image,
-      imageName: imageName
+      imageName: imageName,
+      callback: "handleUpdateResponse"
+    });
+
+    script.src = `${WEB_APP_URL}?${params.toString()}`;
+    script.onerror = () => {
+      hideLoading();
+      swal("Lỗi mạng", "Không thể kết nối đến máy chủ", "error");
     };
 
-    showLoading();
-    
-    // Gửi POST sang Google Apps Script bằng mode no-cors để tương thích GitHub Pages
-    fetch(WEB_APP_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: {
-        "Content-Type": "text/plain;charset=utf-8",
-      },
-      body: JSON.stringify(payload)
-    })
-    .then(() => {
-      hideLoading();
-      swal("Thành công ✅", "Đã lưu kết quả kiểm kê và hình ảnh!", "success").then(() => {
+    document.body.appendChild(script);
+  }
+
+  function handleUpdateResponse(res) {
+    hideLoading();
+    if (res && res.status === "SUCCESS") {
+      swal("Thành công ✅", res.message, "success").then(() => {
         document.getElementById("assetCodeInput").value = "";
         hideAssetDetail();
       });
-    })
-    .catch(err => {
-      hideLoading();
-      swal("Lỗi mạng", "Không thể kết nối đến máy chủ", "error");
-    });
+    } else {
+      swal("Lỗi ❌", res.message || "Không thể cập nhật", "error");
+    }
   }
 
   function showLoading() { document.getElementById("loading").classList.remove("d-none"); }
