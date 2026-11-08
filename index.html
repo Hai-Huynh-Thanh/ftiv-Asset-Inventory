@@ -16,6 +16,7 @@
     .info-card { background:#f8f9fa; border:1px solid #e9ecef; border-radius:10px; padding:15px; margin-top:15px; }
     .info-label { font-size:12px; color:#6c757d; text-transform:uppercase; font-weight:600; margin-bottom:2px; }
     .info-value { font-size:15px; font-weight:600; color:#212529; margin-bottom:10px; }
+    .preview-img { max-width: 100%; height: auto; border-radius: 8px; margin-top: 10px; max-height: 150px; }
   </style>
 </head>
 <body>
@@ -60,7 +61,8 @@
         </div>
         <div class="col-6">
           <div class="info-label">Vị trí cụ thể / Position</div>
-          <div class="info-value" id="dispPosition">-</div>
+          <!-- Hiển thị text hoặc ô input tùy thuộc dữ liệu có hay trống -->
+          <div id="positionContainer"></div>
         </div>
       </div>
     </div>
@@ -69,6 +71,17 @@
     <div class="mt-3">
       <label class="form-label fw-bold text-danger">Kiểm kê thực tế / Inventory Qty</label>
       <input type="number" class="form-control form-control-lg border-danger" id="inventoryQtyInput" placeholder="Nhập số lượng thực tế..." min="0">
+    </div>
+
+    <!-- Chụp hình tài sản (Tùy chọn) -->
+    <div class="mt-3">
+      <label class="form-label fw-bold">Chụp hình tài sản <span class="text-muted fw-normal">(Tùy chọn)</span></label>
+      <input type="file" class="form-control" id="cameraInput" accept="image/*" capture="environment" onchange="previewImage(this)">
+      <div id="imagePreviewContainer" class="d-none text-center">
+        <img id="imgPreview" class="preview-img border" alt="Preview">
+        <br>
+        <button type="button" class="btn btn-sm btn-outline-danger mt-2" onclick="clearImage()">❌ Xóa ảnh chụp</button>
+      </div>
     </div>
 
     <!-- Nút xác nhận OK -->
@@ -82,24 +95,24 @@
   <!-- Spinner Loading -->
   <div id="loading" class="text-center my-3 d-none">
     <div class="spinner-border text-primary"></div>
-    <div class="mt-2 text-muted">Đang kết nối dữ liệu...</div>
+    <div class="mt-2 text-muted">Đang xử lý dữ liệu...</div>
   </div>
 
 </div>
 
 <script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
 <script>
-  // Dán URL Web App của bạn vào đây (Link sau khi Deploy Web App)
-  const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwUPnupr0h9R-dfSKmZZCgF95f5zFtkXweLrTm0abMVSNc9P5SuUqYyuPuPUy0PZAKc5Q/exec";
+  const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxuz-avf9iKRa7i0K6UWqmEJHuGpPjOAOyuI2us9BysLkbJN7pA6jx1RzFvfJJYJ4LZXQ/exec";
 
   let selectedAsset = null;
   let searchTimeout = null;
+  let base64Image = "";
+  let imageName = "";
 
   document.addEventListener("DOMContentLoaded", () => {
     const input = document.getElementById("assetCodeInput");
     const list = document.getElementById("assetSuggestList");
 
-    // Xử lý sự kiện gõ từ khóa tìm kiếm (Debounce 300ms)
     input.addEventListener("input", () => {
       clearTimeout(searchTimeout);
       const keyword = input.value.trim();
@@ -116,14 +129,12 @@
     });
   });
 
-  // Đóng danh sách gợi ý khi click ra ngoài
   document.addEventListener("click", e => {
     if (!e.target.closest(".position-relative")) {
       document.getElementById("assetSuggestList").classList.add("d-none");
     }
   });
 
-  // Gọi API lấy dữ liệu gợi ý từ Google Sheets (dùng JSONP bypass CORS)
   function fetchAssetSuggestions(keyword) {
     showLoading();
     const oldScript = document.getElementById("jsonpScript");
@@ -139,7 +150,6 @@
     document.body.appendChild(script);
   }
 
-  // Nhận dữ liệu kết quả gợi ý
   function handleAssetSuggestions(res) {
     hideLoading();
     const list = document.getElementById("assetSuggestList");
@@ -163,21 +173,33 @@
     }
   }
 
-  // Chọn 1 tài sản từ danh sách gợi ý
   function selectAsset(item) {
     selectedAsset = item;
     document.getElementById("assetCodeInput").value = item.assetCode;
     document.getElementById("dispAssetName").textContent = item.assetName || "-";
     document.getElementById("dispSupplier").textContent = item.supplier || "-";
     document.getElementById("dispRoom").textContent = item.room || "-";
-    document.getElementById("dispPosition").textContent = item.position || "-";
     document.getElementById("dispQty").textContent = item.qty;
-
-    // Điền sẵn giá trị kiểm kê cũ (nếu có) hoặc để trống
     document.getElementById("inventoryQtyInput").value = item.inventory !== "" ? item.inventory : "";
 
+    // Xử lý hiển thị Position (nếu có dữ liệu thì hiển thị text, nếu trống thì hiện ô input cho phép nhập/sửa)
+    const posContainer = document.getElementById("positionContainer");
+    if (item.position && item.position.trim() !== "") {
+      posContainer.innerHTML = `<div class="info-value">${item.position} <i class="fa fa-pencil text-muted" style="cursor:pointer;" title="Bấm để sửa" onclick="enablePositionEdit('${item.position}')"></i></div>`;
+    } else {
+      posContainer.innerHTML = `<input type="text" class="form-control form-control-sm" id="positionInputEdit" placeholder="Nhập vị trí cụ thể...">`;
+    }
+
+    clearImage();
     document.getElementById("assetDetailWrap").classList.remove("d-none");
     document.getElementById("inventoryQtyInput").focus();
+  }
+
+  // Cho phép chỉnh sửa lại nếu vị trí đã có sẵn nhưng muốn đổi
+  function enablePositionEdit(currentVal) {
+    const posContainer = document.getElementById("positionContainer");
+    posContainer.innerHTML = `<input type="text" class="form-control form-control-sm" id="positionInputEdit" value="${currentVal}">`;
+    document.getElementById("positionInputEdit").focus();
   }
 
   function hideAssetDetail() {
@@ -185,7 +207,28 @@
     document.getElementById("assetDetailWrap").classList.add("d-none");
   }
 
-  // Gửi số lượng kiểm kê về Google Sheets
+  function previewImage(input) {
+    if (input.files && input.files[0]) {
+      const file = input.files[0];
+      imageName = file.name;
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        base64Image = e.target.result;
+        document.getElementById("imgPreview").src = base64Image;
+        document.getElementById("imagePreviewContainer").classList.remove("d-none");
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
+  function clearImage() {
+    base64Image = "";
+    imageName = "";
+    document.getElementById("cameraInput").value = "";
+    document.getElementById("imagePreviewContainer").classList.add("d-none");
+    document.getElementById("imgPreview").src = "";
+  }
+
   function confirmInventory() {
     if (!selectedAsset) {
       swal("Chú ý", "Vui lòng chọn tài sản cần kiểm kê", "warning");
@@ -198,10 +241,20 @@
       return;
     }
 
+    // Lấy giá trị Position nếu ô input xuất hiện
+    let newPosition = selectedAsset.position;
+    const posInput = document.getElementById("positionInputEdit");
+    if (posInput) {
+      newPosition = posInput.value.trim();
+    }
+
     const payload = {
       action: "updateInventory",
       assetCode: selectedAsset.assetCode,
-      inventoryQty: Number(inventoryQty)
+      inventoryQty: Number(inventoryQty),
+      position: newPosition,
+      imageBase64: base64Image,
+      imageName: imageName
     };
 
     showLoading();
@@ -215,7 +268,6 @@
         const res = JSON.parse(text);
         if (res.status === "SUCCESS") {
           swal("Thành công ✅", res.message, "success").then(() => {
-            // Reset form sau khi lưu thành công
             document.getElementById("assetCodeInput").value = "";
             hideAssetDetail();
           });
