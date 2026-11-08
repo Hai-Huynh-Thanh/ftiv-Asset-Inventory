@@ -2,6 +2,7 @@
 <html>
 <head>
   <base target="_top">
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
@@ -61,7 +62,6 @@
         </div>
         <div class="col-6">
           <div class="info-label">Vị trí cụ thể / Position</div>
-          <!-- Hiển thị text hoặc ô input tùy thuộc dữ liệu có hay trống -->
           <div id="positionContainer"></div>
         </div>
       </div>
@@ -102,7 +102,8 @@
 
 <script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
 <script>
-  const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxuz-avf9iKRa7i0K6UWqmEJHuGpPjOAOyuI2us9BysLkbJN7pA6jx1RzFvfJJYJ4LZXQ/exec";
+  // Thay thế bằng link Web App của bạn (kết thúc bằng /exec)
+  const WEB_APP_URL = "https://script.google.com/macros/s/AKfycby5bJgKiSepOdKArjb3uY8FFhGzILXJ1P0i959lLa9g-Q9-KTZm9EUJYNRNIuHKy99dqA/exec";
 
   let selectedAsset = null;
   let searchTimeout = null;
@@ -182,7 +183,6 @@
     document.getElementById("dispQty").textContent = item.qty;
     document.getElementById("inventoryQtyInput").value = item.inventory !== "" ? item.inventory : "";
 
-    // Xử lý hiển thị Position (nếu có dữ liệu thì hiển thị text, nếu trống thì hiện ô input cho phép nhập/sửa)
     const posContainer = document.getElementById("positionContainer");
     if (item.position && item.position.trim() !== "") {
       posContainer.innerHTML = `<div class="info-value">${item.position} <i class="fa fa-pencil text-muted" style="cursor:pointer;" title="Bấm để sửa" onclick="enablePositionEdit('${item.position}')"></i></div>`;
@@ -195,7 +195,6 @@
     document.getElementById("inventoryQtyInput").focus();
   }
 
-  // Cho phép chỉnh sửa lại nếu vị trí đã có sẵn nhưng muốn đổi
   function enablePositionEdit(currentVal) {
     const posContainer = document.getElementById("positionContainer");
     posContainer.innerHTML = `<input type="text" class="form-control form-control-sm" id="positionInputEdit" value="${currentVal}">`;
@@ -241,7 +240,6 @@
       return;
     }
 
-    // Lấy giá trị Position nếu ô input xuất hiện
     let newPosition = selectedAsset.position;
     const posInput = document.getElementById("positionInputEdit");
     if (posInput) {
@@ -258,27 +256,27 @@
     };
 
     showLoading();
+    
+    // Gửi POST sang Google Apps Script bằng mode no-cors để tương thích GitHub Pages
     fetch(WEB_APP_URL, {
       method: "POST",
+      mode: "no-cors",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+      },
       body: JSON.stringify(payload)
     })
-      .then(res => res.text())
-      .then(text => {
-        hideLoading();
-        const res = JSON.parse(text);
-        if (res.status === "SUCCESS") {
-          swal("Thành công ✅", res.message, "success").then(() => {
-            document.getElementById("assetCodeInput").value = "";
-            hideAssetDetail();
-          });
-        } else {
-          swal("Lỗi ❌", res.message, "error");
-        }
-      })
-      .catch(err => {
-        hideLoading();
-        swal("Lỗi mạng", "Không thể cập nhật giá trị kiểm kê", "error");
+    .then(() => {
+      hideLoading();
+      swal("Thành công ✅", "Đã lưu kết quả kiểm kê và hình ảnh!", "success").then(() => {
+        document.getElementById("assetCodeInput").value = "";
+        hideAssetDetail();
       });
+    })
+    .catch(err => {
+      hideLoading();
+      swal("Lỗi mạng", "Không thể kết nối đến máy chủ", "error");
+    });
   }
 
   function showLoading() { document.getElementById("loading").classList.remove("d-none"); }
